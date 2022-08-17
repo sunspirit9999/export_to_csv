@@ -24,11 +24,6 @@ var (
 	intDateFormat  = "20060102"
 )
 
-type count struct {
-	sync.Mutex
-	total int
-}
-
 func FormatDate(processTime string) (time.Time, error) {
 	return time.Parse(hourFormat, processTime)
 }
@@ -96,10 +91,10 @@ func main() {
 func ProcessTransactions(client *gorm.DB, fromTime, toTime time.Time, writer *csv.CsvWriter) {
 
 	// total amount of all transactions
-	var totalAmount count
+	var totalAmount types.Counter
 
 	// total transactions
-	var totalTransactions count
+	var totalTransactions types.Counter
 
 	// channel which receive transactions between goroutines
 	var txsChan = make(chan []types.Transaction)
@@ -144,11 +139,11 @@ func ProcessTransactions(client *gorm.DB, fromTime, toTime time.Time, writer *cs
 	close(txsChan)
 
 	// Content of the last line
-	writer.Write([]string{"FT", fmt.Sprint(totalTransactions.total), fmt.Sprint(totalTransactions.total), "0", fmt.Sprint(totalAmount.total)})
+	writer.Write([]string{"FT", fmt.Sprint(totalTransactions.Total), fmt.Sprint(totalTransactions.Total), "0", fmt.Sprint(totalAmount.Total)})
 
 }
 
-func QueryTransactions(client *gorm.DB, tableName string, txsChan chan []types.Transaction, totalTransactions *count) {
+func QueryTransactions(client *gorm.DB, tableName string, txsChan chan []types.Transaction, totalTransactions *types.Counter) {
 
 	var transactions []types.Transaction
 
@@ -162,12 +157,12 @@ func QueryTransactions(client *gorm.DB, tableName string, txsChan chan []types.T
 
 	// Count total transactions
 	totalTransactions.Lock()
-	totalTransactions.total += len(transactions)
+	totalTransactions.Total += len(transactions)
 	totalTransactions.Unlock()
 
 }
 
-func ExportToFile(transactions []types.Transaction, writer *csv.CsvWriter, totalAmount *count) {
+func ExportToFile(transactions []types.Transaction, writer *csv.CsvWriter, totalAmount *types.Counter) {
 
 	for _, transaction := range transactions {
 
@@ -176,7 +171,7 @@ func ExportToFile(transactions []types.Transaction, writer *csv.CsvWriter, total
 
 		// calculate total amount of all transactions
 		totalAmount.Lock()
-		totalAmount.total += transaction.Amount
+		totalAmount.Total += transaction.Amount
 		totalAmount.Unlock()
 
 		err := writer.Write(row)

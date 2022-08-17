@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type Transaction struct {
 	Id            int
@@ -33,4 +36,9 @@ type AccountBalance struct {
 	WorkingDate time.Time
 	TraceNo     string
 	BlockNum    int
+}
+
+type Counter struct {
+	sync.Mutex
+	Total int
 }
