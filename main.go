@@ -116,7 +116,7 @@ func ProcessTransactions(client *gorm.DB, fromTime, toTime time.Time, writer *cs
 		}()
 	}
 
-	// Query by shard db (sharding by date)
+	// Query by shard table (sharding by date : transaction_20220420,  transaction_20220421, ...)
 	for fromTime.Before(toTime) {
 		intDateTime, err := strconv.Atoi(fromTime.Format(intDateFormat))
 		if err != nil {
