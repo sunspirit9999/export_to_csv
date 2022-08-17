@@ -1,4 +1,4 @@
-# Database : postgres
-# Language : golang
+Database : postgres
+Language : golang
 
-## Query data by duration of time then export to '.csv' file
+## Use golang code to query data by duration of time from DB then export to '.csv' file
