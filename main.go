@@ -122,16 +122,19 @@ func ProcessTransactions(client *gorm.DB, fromTimeQuery, toTimeQuery time.Time, 
 
 	var wg sync.WaitGroup
 
+	// init session using Prepare Statement
+	tx := client.Session(&gorm.Session{PrepareStmt: true})
+
 	// Init worker for concurrency processing
 	for i := 0; i < numOfWorker; i++ {
-		go func() {
+		go func(i int) {
 			// get transactions from channel to process
 			for transactions := range txsChan {
-				// fmt.Printf("Worker %d is processing !\n", i)
+				fmt.Printf("Worker %d is processing !\n", i)
 				ExportToFile(transactions, writer, &totalAmount)
 				wg.Done()
 			}
-		}()
+		}(i)
 	}
 
 	var timeQuery = Round(fromTimeQuery)
@@ -160,11 +163,11 @@ func ProcessTransactions(client *gorm.DB, fromTimeQuery, toTimeQuery time.Time, 
 
 		tableName := fmt.Sprintf("transaction_%d", intTimeQuery)
 
-		wg.Add(1)
 		// Query by shard table (sharding by date : transaction_20220420,  transaction_20220421, ...)
-		QueryTransactions(client, tableName, txsChan, &totalTransactions, timeQuery, timeQueryCondition, withCondition)
+		QueryTransactions(&wg, tx, tableName, txsChan, &totalTransactions, timeQuery, timeQueryCondition, withCondition)
 
 		timeQuery = Round(timeQuery).AddDate(0, 0, 1)
+
 	}
 
 	// log.Printf("Queried %d transactions from %s to %s : %v \n", totalTransactions.total, fromTime, toTime, time.Since(start))
@@ -179,9 +182,9 @@ func ProcessTransactions(client *gorm.DB, fromTimeQuery, toTimeQuery time.Time, 
 
 }
 
-func QueryTransactions(client *gorm.DB, tableName string, txsChan chan []types.Transaction,
+func QueryTransactions(wg *sync.WaitGroup, client *gorm.DB, tableName string, txsChan chan []types.Transaction,
 	totalTransactions *types.Counter, timeQuery time.Time, timeQueryCondition string, withCondition bool) {
-
+	// start := time.Now()
 	var transactions []types.Transaction
 
 	if withCondition {
@@ -198,18 +201,24 @@ func QueryTransactions(client *gorm.DB, tableName string, txsChan chan []types.T
 		}
 	}
 
-	// send queried transactions to channel
-	txsChan <- transactions
+	if len(transactions) > 0 {
+		wg.Add(1)
+		// send queried transactions to channel
+		txsChan <- transactions
 
-	// Count total transactions
-	totalTransactions.Lock()
-	totalTransactions.Total += len(transactions)
-	totalTransactions.Unlock()
+		// Count total transactions
+		totalTransactions.Lock()
+		totalTransactions.Total += len(transactions)
+		totalTransactions.Unlock()
+	}
+
+	// fmt.Println(time.Since(start))
 
 }
 
 func ExportToFile(transactions []types.Transaction, writer *csv.CsvWriter, totalAmount *types.Counter) {
 
+	// var rows = [][]string{}
 	for _, transaction := range transactions {
 
 		row := []string{"CT", transaction.TraceNo, transaction.Txhash, transaction.SenderId, transaction.ReceiverId,
@@ -220,9 +229,12 @@ func ExportToFile(transactions []types.Transaction, writer *csv.CsvWriter, total
 		totalAmount.Total += transaction.Amount
 		totalAmount.Unlock()
 
+		// rows = append(rows, row)
 		err := writer.Write(row)
 		if err != nil {
 			log.Println("Error when writing to file :", err)
 		}
+
 	}
+
 }

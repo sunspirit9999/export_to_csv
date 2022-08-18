@@ -7,8 +7,8 @@ import (
 
 type Transaction struct {
 	Id            int
-	BlockNum      int    `gorm:"index:idx_transaction,unique"`
-	Txhash        string `gorm:"index:idx_transaction,unique"`
+	BlockNum      int
+	Txhash        string
 	TraceNo       string
 	Action        string
 	Amount        int

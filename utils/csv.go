@@ -21,12 +21,24 @@ func NewCsvWriter(fileName string) (*CsvWriter, error) {
 	return &CsvWriter{csvWriter: w, mutex: &sync.Mutex{}}, nil
 }
 
+func (w *CsvWriter) WriteAll(rows [][]string) error {
+	w.mutex.Lock()
+	err := w.csvWriter.WriteAll(rows)
+	if err != nil {
+		return err
+	}
+
+	w.mutex.Unlock()
+	return nil
+}
+
 func (w *CsvWriter) Write(row []string) error {
 	w.mutex.Lock()
 	err := w.csvWriter.Write(row)
 	if err != nil {
 		return err
 	}
+
 	w.mutex.Unlock()
 	return nil
 }
