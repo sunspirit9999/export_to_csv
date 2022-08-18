@@ -33,6 +33,7 @@ func FormatDate(processTime string) (time.Time, error) {
 	return time.Parse(hourFormat, processTime)
 }
 
+// Format time to int : 2022-06-20 -> 20220620
 func FormatIntTime(t time.Time) (int, error) {
 	intDateTime, err := strconv.Atoi(t.Format(intDateFormat))
 	if err != nil {
@@ -136,16 +137,16 @@ func ProcessTransactions(client *gorm.DB, fromTimeQuery, toTimeQuery time.Time, 
 	var timeQuery = Round(fromTimeQuery)
 	var timeQueryCondition string
 
-	// Query in range [fromTimeQuery, toTimeQuery]
+	// Query each date in range [fromTimeQuery, toTimeQuery]
 	for timeQuery.Before(Round(toTimeQuery)) || timeQuery.Equal(Round(toTimeQuery)) {
 		var withCondition = false
 
-		// if processDate == fromTimeQuery -> need pass a condition
+		// if timeQuery and fromTimeQuery are both the same date -> need pass a detail condition
 		if timeQuery.Equal(Round(fromTimeQuery)) {
 			withCondition = true
 			timeQueryCondition = "system_date >= ?"
 			timeQuery = fromTimeQuery
-			// if processDate == toTimeQuery -> need pass a condition
+			// if timeQuery and toTimeQuery are both the same date -> need pass a detail condition
 		} else if timeQuery.Equal(Round(toTimeQuery)) {
 			withCondition = true
 			timeQueryCondition = "system_date < ?"
@@ -158,13 +159,12 @@ func ProcessTransactions(client *gorm.DB, fromTimeQuery, toTimeQuery time.Time, 
 		}
 
 		tableName := fmt.Sprintf("transaction_%d", intTimeQuery)
-		fmt.Println(tableName)
 
 		wg.Add(1)
 		// Query by shard table (sharding by date : transaction_20220420,  transaction_20220421, ...)
 		QueryTransactions(client, tableName, txsChan, &totalTransactions, timeQuery, timeQueryCondition, withCondition)
 
-		timeQuery = timeQuery.AddDate(0, 0, 1)
+		timeQuery = Round(timeQuery).AddDate(0, 0, 1)
 	}
 
 	// log.Printf("Queried %d transactions from %s to %s : %v \n", totalTransactions.total, fromTime, toTime, time.Since(start))
@@ -190,7 +190,7 @@ func QueryTransactions(client *gorm.DB, tableName string, txsChan chan []types.T
 			log.Println("Warning :", err)
 		}
 
-		fmt.Println(timeQueryCondition, timeQuery)
+		// fmt.Println(timeQueryCondition, timeQuery)
 	} else {
 		err := client.Table(tableName).Select("trace_no", "txhash", "sender_id", "receiver_id", "action", "amount", "system_date").Find(&transactions).Error
 		if err != nil && !strings.Contains(err.Error(), "does not exist") {
