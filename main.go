@@ -24,14 +24,26 @@ var (
 	intDateFormat  = "20060102"
 )
 
+// Round to day unit : 2022-01-02 13:42:31 -> 2022-01-02 00:00:00
+func Round(t time.Time) time.Time {
+	return t.Truncate(time.Hour * 24)
+}
+
 func FormatDate(processTime string) (time.Time, error) {
 	return time.Parse(hourFormat, processTime)
 }
 
+func FormatIntTime(t time.Time) (int, error) {
+	intDateTime, err := strconv.Atoi(t.Format(intDateFormat))
+	if err != nil {
+		return 0, err
+	}
+	return intDateTime, nil
+}
 func main() {
 	from := flag.String("from", "", "date with format yyyy-dd-mm")
 	to := flag.String("to", "", "date with format yyyy-dd-mm")
-	path := flag.String("file_path", "/home/sunspirit/Documents", "relative path with format string")
+	path := flag.String("file_path", "/home/sunspirit/Documents/", "relative path with format string")
 
 	flag.Parse()
 
@@ -64,6 +76,11 @@ func main() {
 		}
 	}
 
+	// fromTime must be less or equal than toTime
+	if fromTimeQuery.After(toTimeQuery) {
+		panic("from must be less than to !")
+	}
+
 	// convert date time to format yyyy-mm-dd hh:mm:ss
 	fromTimeQueryStr := fromTimeQuery.Format(hourFormat)
 	// convert date time to format yyyy-mm-dd hh:mm:ss
@@ -88,7 +105,7 @@ func main() {
 
 }
 
-func ProcessTransactions(client *gorm.DB, fromTime, toTime time.Time, writer *csv.CsvWriter) {
+func ProcessTransactions(client *gorm.DB, fromTimeQuery, toTimeQuery time.Time, writer *csv.CsvWriter) {
 
 	// total amount of all transactions
 	var totalAmount types.Counter
@@ -116,19 +133,38 @@ func ProcessTransactions(client *gorm.DB, fromTime, toTime time.Time, writer *cs
 		}()
 	}
 
-	// Query by shard table (sharding by date : transaction_20220420,  transaction_20220421, ...)
-	for fromTime.Before(toTime) {
-		intDateTime, err := strconv.Atoi(fromTime.Format(intDateFormat))
+	var timeQuery = Round(fromTimeQuery)
+	var timeQueryCondition string
+
+	// Query in range [fromTimeQuery, toTimeQuery]
+	for timeQuery.Before(Round(toTimeQuery)) || timeQuery.Equal(Round(toTimeQuery)) {
+		var withCondition = false
+
+		// if processDate == fromTimeQuery -> need pass a condition
+		if timeQuery.Equal(Round(fromTimeQuery)) {
+			withCondition = true
+			timeQueryCondition = "system_date >= ?"
+			timeQuery = fromTimeQuery
+			// if processDate == toTimeQuery -> need pass a condition
+		} else if timeQuery.Equal(Round(toTimeQuery)) {
+			withCondition = true
+			timeQueryCondition = "system_date < ?"
+			timeQuery = toTimeQuery
+		}
+
+		intTimeQuery, err := FormatIntTime(timeQuery)
 		if err != nil {
 			panic(err)
 		}
 
-		tableName := fmt.Sprintf("transaction_%d", intDateTime)
+		tableName := fmt.Sprintf("transaction_%d", intTimeQuery)
+		fmt.Println(tableName)
 
 		wg.Add(1)
-		QueryTransactions(client, tableName, txsChan, &totalTransactions)
+		// Query by shard table (sharding by date : transaction_20220420,  transaction_20220421, ...)
+		QueryTransactions(client, tableName, txsChan, &totalTransactions, timeQuery, timeQueryCondition, withCondition)
 
-		fromTime = fromTime.AddDate(0, 0, 1)
+		timeQuery = timeQuery.AddDate(0, 0, 1)
 	}
 
 	// log.Printf("Queried %d transactions from %s to %s : %v \n", totalTransactions.total, fromTime, toTime, time.Since(start))
@@ -143,13 +179,23 @@ func ProcessTransactions(client *gorm.DB, fromTime, toTime time.Time, writer *cs
 
 }
 
-func QueryTransactions(client *gorm.DB, tableName string, txsChan chan []types.Transaction, totalTransactions *types.Counter) {
+func QueryTransactions(client *gorm.DB, tableName string, txsChan chan []types.Transaction,
+	totalTransactions *types.Counter, timeQuery time.Time, timeQueryCondition string, withCondition bool) {
 
 	var transactions []types.Transaction
 
-	err := client.Table(tableName).Select("trace_no", "txhash", "sender_id", "receiver_id", "action", "amount", "system_date").Find(&transactions).Error
-	if err != nil {
-		log.Println("Warning :", err)
+	if withCondition {
+		err := client.Table(tableName).Select("trace_no", "txhash", "sender_id", "receiver_id", "action", "amount", "system_date").Where(timeQueryCondition, timeQuery).Find(&transactions).Error
+		if err != nil && !strings.Contains(err.Error(), "does not exist") {
+			log.Println("Warning :", err)
+		}
+
+		fmt.Println(timeQueryCondition, timeQuery)
+	} else {
+		err := client.Table(tableName).Select("trace_no", "txhash", "sender_id", "receiver_id", "action", "amount", "system_date").Find(&transactions).Error
+		if err != nil && !strings.Contains(err.Error(), "does not exist") {
+			log.Println("Warning :", err)
+		}
 	}
 
 	// send queried transactions to channel
