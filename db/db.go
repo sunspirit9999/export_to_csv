@@ -8,12 +8,12 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func InitDB() *gorm.DB {
-	host := "localhost"
-	port := "5432"
-	username := "hppoc"
-	password := "Password"
-	dbname := "e_wallet"
+func InitDB(pgConfig map[string]string) *gorm.DB {
+	host := pgConfig["host"]
+	port := pgConfig["port"]
+	username := pgConfig["username"]
+	password := pgConfig["password"]
+	dbname := pgConfig["database"]
 
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s", host, username, password, dbname, port)
 	fmt.Printf("PgService.NewPgService: dsn = %s\n", dsn)
