@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,14 +60,23 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 	var err error
 
 	// if user pass a date -> use it
-	if fromStr != "" {
+	if !validateTimeFormat(fromStr) {
+		utils.Response(w, types.ErrorResponse{
+			Code:    500,
+			Message: "Format's arguments must be yyyymmddhhmmss !",
+			Error:   "Invalid format !",
+		})
+		return
+	}
+	if validateTimeFormat(fromStr) {
+		fmt.Println(validateTimeFormat(fromStr))
 		from := formatTimeString(fromStr)
 		fromTimeQuery, err = FormatDate(from)
 		if err != nil {
 			utils.Response(w, types.ErrorResponse{
 				Code:    500,
 				Message: "from's format is invalid !",
-				Error:   err.Error(),
+				Error:   "Invalid format !",
 			})
 			return
 		}
@@ -74,6 +84,15 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 
 	// if user pass a date -> use it
 	if toStr != "" {
+		if !validateTimeFormat(toStr) {
+			utils.Response(w, types.ErrorResponse{
+				Code:    500,
+				Message: "Format's arguments must be yyyymmddhhmmss !",
+				Error:   err.Error(),
+			})
+			return
+		}
+		fmt.Println(validateTimeFormat(fromStr))
 		to := formatTimeString(toStr)
 		toTimeQuery, err = FormatDate(to)
 		if err != nil {
@@ -84,6 +103,7 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 			})
 			return
 		}
+
 	}
 
 	// fromTime must be less or equal than toTime
@@ -115,6 +135,8 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 		})
 		return
 	}
+
+	log.Printf("Query transactions from %s to %s \n", fromTimeQueryStr, toTimeQueryStr)
 
 	// Query transactions from db then write to file
 	totalTransactions, _, err := ProcessTransactions(client, fromTimeQuery, toTimeQuery, writer)
@@ -148,6 +170,12 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 
 }
 
+func validateTimeFormat(t string) bool {
+	r, _ := regexp.Compile("([0-9]{4})(0[1-9]|1[0-2])(0[1-9]|[1-2][0-9]|3[0-1])(2[0-3]|[01][0-9])([0-5][0-9])([0-5][0-9])")
+	return r.MatchString(t) && len(t) == 14
+}
+
+// convert yyyyddmmddhhmmss to yyyy-mm-dd hh:mm:ss
 func formatTimeString(t string) string {
 
 	year := t[0:4]
@@ -165,6 +193,7 @@ func Round(t time.Time) time.Time {
 	return t.Truncate(time.Hour * 24)
 }
 
+// convert string to time
 func FormatDate(processTime string) (time.Time, error) {
 	return time.Parse(hourFormat, processTime)
 }
