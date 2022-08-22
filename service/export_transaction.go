@@ -60,16 +60,17 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 	var err error
 
 	// if user pass a date -> use it
-	if !validateTimeFormat(fromStr) {
-		utils.Response(w, types.ErrorResponse{
-			Code:    500,
-			Message: "Format's arguments must be yyyymmddhhmmss !",
-			Error:   "Invalid format !",
-		})
-		return
-	}
-	if validateTimeFormat(fromStr) {
-		fmt.Println(validateTimeFormat(fromStr))
+
+	if fromStr != "" {
+		if !validateTimeFormat(fromStr) {
+			utils.Response(w, types.ErrorResponse{
+				Code:    500,
+				Message: "Format's arguments must be yyyymmddhhmmss !",
+				Error:   "Invalid format !",
+			})
+			return
+		}
+
 		from := formatTimeString(fromStr)
 		fromTimeQuery, err = FormatDate(from)
 		if err != nil {
@@ -92,7 +93,7 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 			})
 			return
 		}
-		fmt.Println(validateTimeFormat(fromStr))
+
 		to := formatTimeString(toStr)
 		toTimeQuery, err = FormatDate(to)
 		if err != nil {
@@ -103,7 +104,6 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 			})
 			return
 		}
-
 	}
 
 	// fromTime must be less or equal than toTime
