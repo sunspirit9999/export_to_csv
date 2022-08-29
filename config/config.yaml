@@ -1,0 +1,17 @@
+postgres:
+   host: "localhost"
+   port: "5432"
+   database: "e_wallet"
+   username: "hppoc"
+   password: "password"
+
+table:
+  schemaName: "public"
+
+file:
+  path: "/home/sunspirit/Documents/"
+  # prefixName: "transaction_"
+  partNumber: 1000
+
+worker:
+  numOfWorker: 10
