@@ -20,9 +20,10 @@ import (
 )
 
 var (
-	hourFormat    = "2006-01-02 15:04:05"
-	numOfWorker   = 1
-	intDateFormat = "20060102"
+	hourFormat         = "2006-01-02 15:04:05"
+	numOfWorker        = 1
+	intDateFormat      = "20060102"
+	validLengthOfInput = 14 // len("yyyymmddhhmmss")
 )
 
 type ReportService struct {
@@ -123,7 +124,7 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 
 	// format filename
 	fileName := fmt.Sprintf("%s_%s_to_%s", rs.PrefixFileName, strings.ReplaceAll(fromTimeQueryStr, " ", "_"), strings.ReplaceAll(toTimeQueryStr, " ", "_"))
-	filePath += fileName
+	filePath += fileName + ".txt"
 
 	// Init writer for writing csv file
 	writer, err := csv.NewCsvWriter(filePath)
@@ -172,7 +173,7 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 
 func validateTimeFormat(t string) bool {
 	r, _ := regexp.Compile("([0-9]{4})(0[1-9]|1[0-2])(0[1-9]|[1-2][0-9]|3[0-1])(2[0-3]|[01][0-9])([0-5][0-9])([0-5][0-9])")
-	return r.MatchString(t) && len(t) == 14
+	return r.MatchString(t) && len(t) == validLengthOfInput
 }
 
 // convert yyyyddmmddhhmmss to yyyy-mm-dd hh:mm:ss
@@ -193,7 +194,7 @@ func Round(t time.Time) time.Time {
 	return t.Truncate(time.Hour * 24)
 }
 
-// convert string to time
+// convert string "yyyymmdd hh:mm:ss" to time
 func FormatDate(processTime string) (time.Time, error) {
 	return time.Parse(hourFormat, processTime)
 }
