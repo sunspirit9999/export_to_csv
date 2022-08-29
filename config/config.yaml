@@ -1,12 +1,12 @@
 postgres:
    host: "localhost"
    port: "5432"
-   database: "e_wallet"
-   username: "hppoc"
-   password: "password"
+   database: "keyman"
+   username: "postgres"
+   password: "postgres"
 
 file:
-  path: "/home/sunspirit/"
+  path: "/home/quangha/company/golang/export_to_csv/"
   prefixName: "transaction_"
 
 worker:

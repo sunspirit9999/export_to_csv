@@ -56,8 +56,8 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 	toStr := r.URL.Query().Get("to")
 
 	// 2022-01-01 00:00:00 is marked as the first time of system
-	var fromTimeQuery = time.Date(2022, 1, 1, 0, 0, 0, 0, time.Local)
-	var toTimeQuery = time.Now()
+	var fromTimeQuery = time.Date(2022, 7, 1, 0, 0, 0, 0, time.Local)
+	var toTimeQuery = time.Date(2022, 7, 2, 0, 0, 0, 0, time.Local)
 	var err error
 
 	// if user pass a date -> use it
@@ -168,6 +168,58 @@ func (rs *ReportService) ExportTransaction(w http.ResponseWriter, r *http.Reques
 	}
 
 	utils.Response(w, response)
+
+}
+
+func (rs *ReportService) AutoExport(fromTimeQuery time.Time, toTimeQuery time.Time) {
+	fmt.Println("Auto export transaction ...")
+	// set path for destination file
+	var filePath = rs.FilePath
+
+	// init postgres connection
+	client := rs.DB
+
+	startProcess := time.Now()
+
+	// 2022-01-01 00:00:00 is marked as the first time of system
+	// var fromTimeQuery = time.Date(2022, 7, 1, 0, 0, 0, 0, time.Local)
+	// var toTimeQuery = time.Date(2022, 7, 2, 0, 0, 0, 0, time.Local)
+	var err error
+
+	// convert date time to format yyyy-mm-dd hh:mm:ss
+	fromTimeQueryStr := fromTimeQuery.Format(hourFormat)
+	// convert date time to format yyyy-mm-dd hh:mm:ss
+	toTimeQueryStr := toTimeQuery.Format(hourFormat)
+
+	// format filename
+	fileName := fmt.Sprintf("%s_%s_to_%s", rs.PrefixFileName, strings.ReplaceAll(fromTimeQueryStr, " ", "_"), strings.ReplaceAll(toTimeQueryStr, " ", "_"))
+	filePath += fileName + ".txt"
+
+	// Init writer for writing csv file
+	writer, err := csv.NewCsvWriter(filePath)
+	if err != nil {
+		fmt.Println("Can't init file !")
+		return
+	}
+
+	log.Printf("Query transactions from %s to %s \n", fromTimeQueryStr, toTimeQueryStr)
+
+	// Query transactions from db then write to file
+	totalTransactions, _, err := ProcessTransactions(client, fromTimeQuery, toTimeQuery, writer)
+	if err != nil {
+		fmt.Println("Error when process transactions !")
+		return
+	}
+
+	writer.Flush()
+
+	log.Printf("Job done : %v\n", time.Since(startProcess))
+
+	if totalTransactions == 0 {
+		fmt.Println("There're no transactions during this period !")
+	} else {
+		fmt.Printf("Exported %d transactions with into %s", totalTransactions, filePath)
+	}
 
 }
 
