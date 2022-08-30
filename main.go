@@ -59,8 +59,7 @@ func main() {
 
 	extension := config.GetString("txt")
 
-	// 2022-01-01 00:00:00 is marked as the first time of system
-	// var fromTimeQuery = time.Date(2022, 1, 1, 0, 0, 0, 0, time.Local)
+	// default
 	var dateTimeQuery = time.Now()
 
 	// if user pass a date -> use it
@@ -71,13 +70,6 @@ func main() {
 			return
 		}
 	}
-
-	// convert date time to format yyyy-mm-dd hh:mm:ss
-	// fromTimeQueryStr := fromTimeQuery.Format(hourFormat)
-	// convert date time to format yyyy-mm-dd hh:mm:ss
-	// toTimeQueryStr := toTimeQuery.Format(hourFormat)
-
-	log.Printf("Export transactions on %s", dateTimeQuery)
 
 	// Query transactions from db then write to file
 	totalTransactions, totalAmounts, err := ProcessTransactions(client, dateTimeQuery, filePath, schemaName, partNumber, extension, *fromBegin)
@@ -118,14 +110,14 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 			schemaName).Scan(&tableList).Error
 
 		if err != nil {
+			log.Println("There's no tables found in DB")
 			return 0, 0, err
 		}
+		log.Printf("Export transactions from begin to %s", dateTimeQuery)
+
 	} else {
 		tableList = append(tableList, tableName)
-	}
-
-	if len(tableList) == 0 {
-		return 0, 0, fmt.Errorf("There's no tables found in DB")
+		log.Printf("Export transactions on %s", dateTimeQuery)
 	}
 
 	for _, tableName := range tableList {
@@ -139,11 +131,14 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 
 		intDate, err := strconv.Atoi(strings.Split(tableName, "_")[1])
 		if err != nil {
-			log.Println("Can't get intDate from tableName !")
+			log.Println("Can't get integer format of date from tableName !")
+			return 0, 0, err
 		}
 
+		// the first blocknum in table
 		var firstBlockNum = (lastBlockNum - totalDailyBlocks) - 1
 
+		// total files will be created, each file has a number of transactions in 1000 blocks
 		var totalParts = (totalDailyBlocks / partNumber) + 1
 
 		var wg sync.WaitGroup
@@ -153,6 +148,7 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 			fromBlock := firstBlockNum + partId*partNumber
 			toBlock := firstBlockNum + (partId+1)*partNumber
 
+			// the last file
 			if partId == totalParts-1 {
 				toBlock = lastBlockNum
 			}
@@ -164,7 +160,10 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 				transactions := QueryTransactions(&wg, client, tableName, fromBlock, toBlock)
 
 				if len(transactions) > 0 {
-					total, err := ExportToFile(transactions, filePath, intDate, partId+1, extension)
+					fileName := fmt.Sprintf("%d_%d.%s", intDate, partId+1, extension)
+					url := filePath + fileName
+
+					total, err := ExportToFile(transactions, url)
 					if err != nil {
 						log.Printf("Error when exporting to file : %+v\n", err)
 					}
@@ -207,53 +206,9 @@ func QueryTransactions(wg *sync.WaitGroup, client *gorm.DB, tableName string, fr
 
 }
 
-// func validateTimeFormat(t string) bool {
-// 	r, _ := regexp.Compile("([0-9]{4})(0[1-9]|1[0-2])(0[1-9]|[1-2][0-9]|3[0-1])(2[0-3]|[01][0-9])([0-5][0-9])([0-5][0-9])")
-// 	return r.MatchString(t) && len(t) == validLengthOfInput
-// }
-
-// // convert yyyyddmmddhhmmss to yyyy-mm-dd hh:mm:ss
-// func formatTimeString(t string) string {
-
-// 	year := t[0:4]
-// 	month := t[4:6]
-// 	day := t[6:8]
-// 	hour := t[8:10]
-// 	minute := t[10:12]
-// 	second := t[12:]
-
-// 	return fmt.Sprintf("%s-%s-%s %s:%s:%s", year, month, day, hour, minute, second)
-// }
-
-// Round to day unit : 2022-01-02 13:42:31 -> 2022-01-02 00:00:00
-func Round(t time.Time) time.Time {
-	return t.Truncate(time.Hour * 24)
-}
-
-// convert string to time
-func FormatDate(processTime string) (time.Time, error) {
-	return time.Parse(hourFormat, processTime)
-}
-
-func FormatDate2(processTime string) (time.Time, error) {
-	return time.Parse(dateFormat, processTime)
-}
-
-// Format time to int : 2022-06-20 -> 20220620
-func FormatIntTime(t time.Time) (int, error) {
-	intDateTime, err := strconv.Atoi(t.Format(intDateFormat))
-	if err != nil {
-		return 0, fmt.Errorf("Can't parse time to int with format yyyymmdd !")
-	}
-	return intDateTime, nil
-}
-
-func ExportToFile(transactions []types.TransactionFileFormat, filePath string, intTimeQuery int, partId int, extension string) (int64, error) {
+func ExportToFile(transactions []types.TransactionFileFormat, filePath string) (int64, error) {
 
 	var totalAmount int64
-
-	fileName := fmt.Sprintf("%d_%d.%s", intTimeQuery, partId, extension)
-	filePath += fileName
 
 	// Init writer for writing csv file
 	writer, err := csv.NewCsvWriter(filePath)
@@ -289,3 +244,44 @@ func ExportToFile(transactions []types.TransactionFileFormat, filePath string, i
 	return totalAmount, nil
 
 }
+
+// Round to day unit : 2022-01-02 13:42:31 -> 2022-01-02 00:00:00
+func Round(t time.Time) time.Time {
+	return t.Truncate(time.Hour * 24)
+}
+
+// convert string to time
+func FormatDate(processTime string) (time.Time, error) {
+	return time.Parse(hourFormat, processTime)
+}
+
+func FormatDate2(processTime string) (time.Time, error) {
+	return time.Parse(dateFormat, processTime)
+}
+
+// Format time to int : 2022-06-20 -> 20220620
+func FormatIntTime(t time.Time) (int, error) {
+	intDateTime, err := strconv.Atoi(t.Format(intDateFormat))
+	if err != nil {
+		return 0, fmt.Errorf("Can't parse time to int with format yyyymmdd !")
+	}
+	return intDateTime, nil
+}
+
+// func validateTimeFormat(t string) bool {
+// 	r, _ := regexp.Compile("([0-9]{4})(0[1-9]|1[0-2])(0[1-9]|[1-2][0-9]|3[0-1])(2[0-3]|[01][0-9])([0-5][0-9])([0-5][0-9])")
+// 	return r.MatchString(t) && len(t) == validLengthOfInput
+// }
+
+// // convert yyyyddmmddhhmmss to yyyy-mm-dd hh:mm:ss
+// func formatTimeString(t string) string {
+
+// 	year := t[0:4]
+// 	month := t[4:6]
+// 	day := t[6:8]
+// 	hour := t[8:10]
+// 	minute := t[10:12]
+// 	second := t[12:]
+
+// 	return fmt.Sprintf("%s-%s-%s %s:%s:%s", year, month, day, hour, minute, second)
+// }
