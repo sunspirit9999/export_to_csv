@@ -31,6 +31,16 @@ func (w *CsvWriter) Write(row []string) error {
 	return nil
 }
 
+func (w *CsvWriter) WriteAll(row [][]string) error {
+	w.mutex.Lock()
+	err := w.csvWriter.WriteAll(row)
+	if err != nil {
+		return err
+	}
+	w.mutex.Unlock()
+	return nil
+}
+
 func (w *CsvWriter) Flush() {
 	w.mutex.Lock()
 	w.csvWriter.Flush()

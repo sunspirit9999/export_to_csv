@@ -12,6 +12,7 @@ file:
   path: "/home/sunspirit/Documents/"
   # prefixName: "transaction_"
   partNumber: 1000
+  extension: "txt"
 
 worker:
   numOfWorker: 10

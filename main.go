@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -57,7 +56,7 @@ func main() {
 	// set path for destination file
 	partNumber := config.GetInt("file.partNumber")
 
-	extension := config.GetString("txt")
+	extension := config.GetString("file.extension")
 
 	// default
 	var dateTimeQuery = time.Now()
@@ -65,6 +64,7 @@ func main() {
 	// if user pass a date -> use it
 	if *date != "" {
 		dateTimeQuery, err = FormatDate2(*date)
+
 		if err != nil {
 			log.Println("date's format is invalid !")
 			return
@@ -83,7 +83,8 @@ func main() {
 
 }
 
-func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath string, schemaName string, partNumber int, extension string, fromBegin bool) (int64, int64, error) {
+func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath string, schemaName string, partNumber int,
+	extension string, fromBegin bool) (int64, int64, error) {
 
 	// total amount of all transactions
 	var totalAmount types.Counter
@@ -93,17 +94,23 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 
 	var timeQuery = Round(dateTimeQuery)
 
-	intTimeQuery, err := FormatIntTime(timeQuery)
+	intTimeQuery, err := FormatIntTime(timeQuery.AddDate(0, 0, -1))
+	if err != nil {
+		return 0, 0, err
+	}
+
+	fileSubFix, err := FormatIntTime(timeQuery)
 	if err != nil {
 		return 0, 0, err
 	}
 
 	tableName := fmt.Sprintf("transaction_%d", intTimeQuery)
+	blockTableName := fmt.Sprintf("blocks_%d", intTimeQuery)
 
 	var tableList []string
 
 	if fromBegin {
-		err = client.Raw(
+		err := client.Raw(
 			`SELECT tablename FROM pg_tables
 				WHERE  schemaname = ?
 				AND    tablename like 'transaction%'`,
@@ -123,15 +130,9 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 	for _, tableName := range tableList {
 		var lastBlockNum int
 
-		err = client.Raw("select MAX(blocknum) from " + tableName).Scan(&lastBlockNum).Error
+		err := client.Raw("select MAX(blocknum) from " + blockTableName).Scan(&lastBlockNum).Error
 		if err != nil {
 			log.Printf("Cant query the last block in table %s : %+v\n", tableName, err)
-			return 0, 0, err
-		}
-
-		intDate, err := strconv.Atoi(strings.Split(tableName, "_")[1])
-		if err != nil {
-			log.Println("Can't get integer format of date from tableName !")
 			return 0, 0, err
 		}
 
@@ -143,13 +144,13 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 
 		var wg sync.WaitGroup
 
-		for partId := 0; partId < totalParts; partId++ {
+		for partId := 1; partId <= totalParts; partId++ {
 
-			fromBlock := firstBlockNum + partId*partNumber
-			toBlock := firstBlockNum + (partId+1)*partNumber
+			fromBlock := firstBlockNum + (partId-1)*partNumber
+			toBlock := firstBlockNum + partId*partNumber
 
 			// the last file
-			if partId == totalParts-1 {
+			if partId == totalParts {
 				toBlock = lastBlockNum
 			}
 
@@ -160,7 +161,7 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 				transactions := QueryTransactions(&wg, client, tableName, fromBlock, toBlock)
 
 				if len(transactions) > 0 {
-					fileName := fmt.Sprintf("%d_%d.%s", intDate, partId+1, extension)
+					fileName := fmt.Sprintf("%d_%d.%s", fileSubFix, partId, extension)
 					url := filePath + fileName
 
 					total, err := ExportToFile(transactions, url)
@@ -220,18 +221,26 @@ func ExportToFile(transactions []types.TransactionFileFormat, filePath string) (
 	writer.Write([]string{"HD", "TRACE", "TXN_HASH", "FROM", "TO", "TRANSTYPE", "AMOUNT", "STATUS", "TXN_TIME"})
 
 	for _, transaction := range transactions {
-
+		switch transaction.Action {
+		case "Credit":
+			transaction.Action = "mint"
+		case "Debit":
+			transaction.Action = "burn"
+		case "Transfer":
+			transaction.Action = "transfer"
+		}
 		row := []string{"CT", transaction.TraceNo, transaction.Txhash, transaction.SenderId, transaction.ReceiverId,
-			transaction.Action, fmt.Sprint(transaction.Amount), "00", transaction.SystemDate.String()}
+			transaction.Action, fmt.Sprint(transaction.Amount / 100), "00", transaction.SystemDate.Format(hourFormat)}
 
 		// calculate total amount of all transactions
 
-		totalAmount += int64(transaction.Amount)
+		totalAmount += int64(transaction.Amount / 100)
 
 		// rows = append(rows, row)
 		err := writer.Write(row)
 		if err != nil {
-			return 0, fmt.Errorf("There's at least 1 error when writing to file : %v", err)
+			// return 0, fmt.Errorf("There's at least 1 error when writing to file : %v", err)
+			fmt.Println(err)
 		}
 
 	}
