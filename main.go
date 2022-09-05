@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -143,6 +144,7 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 		var totalParts = (totalDailyBlocks / partNumber) + 1
 
 		var wg sync.WaitGroup
+		var processLastBlock = false
 
 		for partId := 1; partId <= totalParts; partId++ {
 
@@ -152,13 +154,16 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 			// the last file
 			if partId == totalParts {
 				toBlock = lastBlockNum
+				processLastBlock = true
 			}
 
 			wg.Add(1)
 
+			fmt.Println(fromBlock, toBlock)
+
 			go func(partId int) {
 				// Query by shard table (sharding by date : transaction_20220420,  transaction_20220421, ...)
-				transactions := QueryTransactions(&wg, client, tableName, fromBlock, toBlock)
+				transactions := QueryTransactions(&wg, client, tableName, fromBlock, toBlock, processLastBlock)
 
 				if len(transactions) > 0 {
 					fileName := fmt.Sprintf("%d_%d.%s", fileSubFix, partId, extension)
@@ -194,13 +199,20 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 
 }
 
-func QueryTransactions(wg *sync.WaitGroup, client *gorm.DB, tableName string, fromBlock, toBlock int) []types.TransactionFileFormat {
+func QueryTransactions(wg *sync.WaitGroup, client *gorm.DB, tableName string, fromBlock, toBlock int, processLastBlock bool) []types.TransactionFileFormat {
 	// start := time.Now()
 	var transactions []types.TransactionFileFormat
 
-	err := client.Table(tableName).Select("trace_no", "txhash", "sender_id", "receiver_id", "action", "amount", "system_date").Where("blocknum >= ? and blocknum < ?", fromBlock, toBlock).Order("blocknum, system_date ASC").Find(&transactions).Error
-	if err != nil {
-		log.Println("Warning :", err)
+	if processLastBlock {
+		err := client.Table(tableName).Select("trace_no", "txhash", "sender_id", "receiver_id", "action", "amount", "system_date").Where("blocknum >= ? and blocknum <= ? ", fromBlock, toBlock).Order("blocknum, system_date ASC").Find(&transactions).Error
+		if err != nil {
+			log.Println("Warning :", err)
+		}
+	} else {
+		err := client.Table(tableName).Select("trace_no", "txhash", "sender_id", "receiver_id", "action", "amount", "system_date").Where("blocknum >= ? and blocknum < ?", fromBlock, toBlock).Order("blocknum, system_date ASC").Find(&transactions).Error
+		if err != nil {
+			log.Println("Warning :", err)
+		}
 	}
 
 	return transactions
@@ -229,7 +241,7 @@ func ExportToFile(transactions []types.TransactionFileFormat, filePath string) (
 		case "Transfer":
 			transaction.Action = "transfer"
 		}
-		row := []string{"CT", transaction.TraceNo, transaction.Txhash, transaction.SenderId, transaction.ReceiverId,
+		row := []string{"CT", transaction.TraceNo, transaction.Txhash, strings.ToLower(transaction.SenderId), strings.ToLower(transaction.ReceiverId),
 			transaction.Action, fmt.Sprint(transaction.Amount / 100), "00", transaction.SystemDate.Format(hourFormat)}
 
 		// calculate total amount of all transactions
