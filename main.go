@@ -159,9 +159,8 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 
 			wg.Add(1)
 
-			fmt.Println(fromBlock, toBlock, processLastBlock)
-
 			go func(partId int) {
+
 				// Query by shard table (sharding by date : transaction_20220420,  transaction_20220421, ...)
 				transactions := QueryTransactions(&wg, client, tableName, fromBlock, toBlock, processLastBlock)
 
@@ -189,9 +188,9 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 
 			}(partId)
 
-		}
+			wg.Wait()
 
-		wg.Wait()
+		}
 
 	}
 
@@ -203,6 +202,7 @@ func QueryTransactions(wg *sync.WaitGroup, client *gorm.DB, tableName string, fr
 	// start := time.Now()
 	var transactions []types.TransactionFileFormat
 
+	// fmt.Println(fromBlock, toBlock, processLastBlock)
 	if processLastBlock {
 		err := client.Table(tableName).Select("trace_no", "txhash", "sender_id", "receiver_id", "action", "amount", "system_date").Where("blocknum >= ? and blocknum <= ? ", fromBlock, toBlock).Order("blocknum, system_date ASC").Find(&transactions).Error
 		if err != nil {
