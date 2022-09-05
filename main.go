@@ -138,7 +138,7 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 		}
 
 		// the first blocknum in table
-		var firstBlockNum = (lastBlockNum - totalDailyBlocks) - 1
+		var firstBlockNum = (lastBlockNum - totalDailyBlocks) + 1
 
 		// total files will be created, each file has a number of transactions in 1000 blocks
 		var totalParts = (totalDailyBlocks / partNumber) + 1
@@ -159,7 +159,7 @@ func ProcessTransactions(client *gorm.DB, dateTimeQuery time.Time, filePath stri
 
 			wg.Add(1)
 
-			fmt.Println(fromBlock, toBlock)
+			fmt.Println(fromBlock, toBlock, processLastBlock)
 
 			go func(partId int) {
 				// Query by shard table (sharding by date : transaction_20220420,  transaction_20220421, ...)
